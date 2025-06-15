@@ -9,10 +9,11 @@ import {
   Upload,
   Download
 } from 'lucide-react';
-import { products } from '../../data/products';
+import { useProducts } from '../../hooks/useProducts';
 import { Product } from '../../types';
 
 const ProductManagement: React.FC = () => {
+  const { products, loading, error, createProduct, updateProduct, deleteProduct } = useProducts();
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('');
   const [showAddModal, setShowAddModal] = useState(false);
@@ -35,18 +36,44 @@ const ProductManagement: React.FC = () => {
       name: product?.name || '',
       price: product?.price || 0,
       originalPrice: product?.originalPrice || 0,
+      image: product?.image || '',
       category: product?.category || '',
       description: product?.description || '',
       stock: product?.stock || 0,
       sku: product?.sku || '',
       featured: product?.featured || false,
       trending: product?.trending || false,
+      sizes: product?.sizes || ['S', 'M', 'L', 'XL'],
+      colors: product?.colors || ['Black', 'White'],
+      images: product?.images || [''],
     });
 
-    const handleSubmit = (e: React.FormEvent) => {
+    const handleSubmit = async (e: React.FormEvent) => {
       e.preventDefault();
-      onSave(formData);
-      onClose();
+      
+      // Ensure we have at least one image
+      const images = formData.images.filter(img => img.trim() !== '');
+      if (images.length === 0) {
+        images.push(formData.image);
+      }
+
+      const productData = {
+        ...formData,
+        images,
+        inStock: formData.stock > 0,
+        rating: product?.rating || 4.5,
+        reviewCount: product?.reviewCount || 0,
+      };
+
+      const result = product 
+        ? await updateProduct(product.id, productData)
+        : await createProduct(productData);
+
+      if (result.success) {
+        onClose();
+      } else {
+        alert(`Error: ${result.error}`);
+      }
     };
 
     return (
@@ -144,6 +171,20 @@ const ProductManagement: React.FC = () => {
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
+                Main Image URL
+              </label>
+              <input
+                type="url"
+                value={formData.image}
+                onChange={(e) => setFormData({...formData, image: e.target.value})}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-black"
+                placeholder="https://example.com/image.jpg"
+                required
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
                 Description
               </label>
               <textarea
@@ -197,6 +238,33 @@ const ProductManagement: React.FC = () => {
       </div>
     );
   };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-64">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-black mx-auto"></div>
+          <p className="mt-4 text-gray-600">Loading products...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex items-center justify-center min-h-64">
+        <div className="text-center">
+          <p className="text-red-600 mb-4">Error loading products: {error}</p>
+          <button 
+            onClick={() => window.location.reload()}
+            className="px-4 py-2 bg-black text-white rounded-md hover:bg-gray-800"
+          >
+            Retry
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -292,7 +360,7 @@ const ProductManagement: React.FC = () => {
                           {product.name}
                         </div>
                         <div className="text-sm text-gray-500">
-                          SKU: {product.id}
+                          SKU: {product.sku}
                         </div>
                       </div>
                     </div>
@@ -309,14 +377,15 @@ const ProductManagement: React.FC = () => {
                     )}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                      product.inStock ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
-                    }`}>
-                      {product.inStock ? 'In Stock' : 'Out of Stock'}
-                    </span>
+                    {product.stock || 0}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                     <div className="flex space-x-1">
+                      <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                        product.inStock ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+                      }`}>
+                        {product.inStock ? 'In Stock' : 'Out of Stock'}
+                      </span>
                       {product.featured && (
                         <span className="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-blue-100 text-blue-800">
                           Featured
@@ -340,7 +409,17 @@ const ProductManagement: React.FC = () => {
                       >
                         <Edit size={16} />
                       </button>
-                      <button className="text-red-600 hover:text-red-800">
+                      <button 
+                        onClick={async () => {
+                          if (confirm('Are you sure you want to delete this product?')) {
+                            const result = await deleteProduct(product.id);
+                            if (!result.success) {
+                              alert(`Error: ${result.error}`);
+                            }
+                          }
+                        }}
+                        className="text-red-600 hover:text-red-800"
+                      >
                         <Trash2 size={16} />
                       </button>
                     </div>
@@ -356,10 +435,7 @@ const ProductManagement: React.FC = () => {
       {showAddModal && (
         <ProductModal
           onClose={() => setShowAddModal(false)}
-          onSave={(product) => {
-            console.log('Adding product:', product);
-            // Add product logic here
-          }}
+          onSave={() => {}}
         />
       )}
 
@@ -367,10 +443,7 @@ const ProductManagement: React.FC = () => {
         <ProductModal
           product={editingProduct}
           onClose={() => setEditingProduct(null)}
-          onSave={(updates) => {
-            console.log('Updating product:', editingProduct.id, updates);
-            // Update product logic here
-          }}
+          onSave={() => {}}
         />
       )}
     </div>

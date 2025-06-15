@@ -125,7 +125,7 @@ export const AdminProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         .select('total, created_at');
 
       const totalOrders = orders?.length || 0;
-      const totalRevenue = orders?.reduce((sum, order) => sum + order.total, 0) || 0;
+      const totalRevenue = orders?.reduce((sum, order) => sum + Number(order.total), 0) || 0;
 
       // Calculate growth (mock data for now)
       const revenueGrowth = 12.5;
@@ -145,6 +145,41 @@ export const AdminProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       console.error('Error fetching dashboard stats:', error);
     }
   };
+
+  // Check if user is already logged in and is an admin
+  useEffect(() => {
+    const checkAdminSession = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.user) {
+        const adminData = await fetchAdminProfile(session.user.id);
+        if (adminData) {
+          setAdmin({
+            ...adminData,
+            email: session.user.email || '',
+          });
+        }
+      }
+    };
+
+    checkAdminSession();
+
+    // Listen for auth changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (event === 'SIGNED_OUT') {
+        setAdmin(null);
+      } else if (event === 'SIGNED_IN' && session?.user) {
+        const adminData = await fetchAdminProfile(session.user.id);
+        if (adminData) {
+          setAdmin({
+            ...adminData,
+            email: session.user.email || '',
+          });
+        }
+      }
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
 
   useEffect(() => {
     if (admin) {
